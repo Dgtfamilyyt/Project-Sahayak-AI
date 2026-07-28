@@ -1,0 +1,6 @@
+{
+  "name": "Project Sahayak AI",
+  "description": "Offline-First AI Healthcare Copilot for rural clinics and primary healthcare centers",
+  "requestFramePermissions": ["microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@layer utilities {
+  @media print {
+    /* Hide navigation, headers, buttons, form controls, and no-print sections */
+    header,
+    nav,
+    aside,
+    footer,
+    button,
+    input,
+    select,
+    textarea,
+    .no-print,
+    .no-print * {
+      display: none !important;
+    }
+
+    /* Standardize white page background & exact colors */
+    body {
+      background-color: #ffffff !important;
+      color: #0f172a !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    /* Unconstrain grid and scroll heights for clean multi-page or single-page prints */
+    main {
+      padding: 0 !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+      overflow: visible !important;
+    }
+
+    div, section, article {
+      max-height: none !important;
+      overflow: visible !important;
+      box-shadow: none !important;
+    }
+
+    .print-only {
+      display: block !important;
+    }
+
+    .page-break-before {
+      page-break-before: always;
+    }
+
+    /* Force background colors and crisp borders in print */
+    * {
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      box-shadow: none !important;
+    }
+  }
+}
