@@ -12,10 +12,14 @@ import {
   Sparkles,
   WifiOff,
   Download,
+  Cpu,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-import { Patient, InventoryItem, PrescribedDrug, NetworkMode, PrescriptionCheckResult } from "../types";
+import { Patient, InventoryItem, PrescribedDrug, NetworkMode, PrescriptionCheckResult, OllamaConfig } from "../types";
 import { offlineDrugInteractionChecker } from "../utils/offlineStorage";
 import { generatePrescriptionPdf, exportElementToPdf } from "../utils/pdfExport";
+import { safePrint } from "../utils/printUtils";
 
 interface PrescriptionGeneratorProps {
   patients: Patient[];
@@ -24,6 +28,7 @@ interface PrescriptionGeneratorProps {
   onSelectPatient: (patient: Patient) => void;
   networkMode: NetworkMode;
   onSavePrescriptionToPatient: (patientId: string, drugs: PrescribedDrug[]) => void;
+  ollamaConfig?: OllamaConfig;
 }
 
 export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
@@ -33,6 +38,7 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
   onSelectPatient,
   networkMode,
   onSavePrescriptionToPatient,
+  ollamaConfig,
 }) => {
   const [prescribedList, setPrescribedList] = useState<PrescribedDrug[]>([
     {
@@ -61,7 +67,12 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
   const [isFallbackUsed, setIsFallbackUsed] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
 
+  // Collapse states
+  const [isAuditCollapsed, setIsAuditCollapsed] = useState(false);
+  const [isSlipCollapsed, setIsSlipCollapsed] = useState(false);
+
   const isOnline = networkMode === "online";
+  const isOllamaActive = ollamaConfig?.provider === "ollama";
 
   const handleAddMedication = () => {
     const medObj = inventory.find((m) => m.id === selectedMedId);
@@ -88,7 +99,7 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
     if (!selectedPatient) return;
     setIsChecking(true);
 
-    if (!isOnline) {
+    if (!isOnline && !isOllamaActive) {
       setTimeout(() => {
         const offRes = offlineDrugInteractionChecker(prescribedList, selectedPatient.knownAllergies);
         setSafetyAnalysis(offRes);
@@ -106,6 +117,9 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
           medications: prescribedList,
           patientAllergies: selectedPatient.knownAllergies,
           chronicConditions: selectedPatient.chronicDiseases,
+          provider: ollamaConfig?.provider,
+          ollamaHost: ollamaConfig?.host,
+          ollamaModel: ollamaConfig?.model,
         }),
       });
 
@@ -134,7 +148,12 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
   };
 
   const handlePrint = () => {
-    window.print();
+    if (!selectedPatient) return;
+    safePrint({
+      elementId: "prescription-slip-card",
+      documentTitle: `Prescription_${selectedPatient.fullName}_${selectedPatient.id}`,
+      fallbackPdf: () => generatePrescriptionPdf(selectedPatient, prescribedList),
+    });
   };
 
   return (
@@ -288,7 +307,10 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
             <div className={`p-4 rounded-2xl border shadow-xs space-y-3 no-print ${
               safetyAnalysis.hasWarnings ? "bg-rose-50 border-rose-300" : "bg-teal-50 border-teal-300"
             }`}>
-              <div className="flex items-center justify-between">
+              <div
+                onClick={() => setIsAuditCollapsed(!isAuditCollapsed)}
+                className="flex items-center justify-between cursor-pointer select-none"
+              >
                 <div className="flex items-center space-x-2">
                   <ShieldAlert className={`h-5 w-5 ${safetyAnalysis.hasWarnings ? "text-rose-600" : "text-teal-600"}`} />
                   <h4 className={`font-extrabold text-xs ${safetyAnalysis.hasWarnings ? "text-rose-900" : "text-teal-900"}`}>
@@ -296,46 +318,55 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
                   </h4>
                 </div>
 
-                {isFallbackUsed && (
-                  <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 flex items-center space-x-1">
-                    <WifiOff className="h-3 w-3" />
-                    <span>Offline Drug Rules</span>
-                  </span>
-                )}
+                <div className="flex items-center space-x-2">
+                  {isFallbackUsed && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 flex items-center space-x-1">
+                      <WifiOff className="h-3 w-3" />
+                      <span>Offline Drug Rules</span>
+                    </span>
+                  )}
+                  <button className="text-slate-600 hover:text-slate-900 cursor-pointer p-0.5">
+                    {isAuditCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
-              {/* Allergy Alerts */}
-              {safetyAnalysis.allergyAlerts.length > 0 && (
-                <div className="p-3 rounded-xl bg-rose-200/80 text-rose-950 text-xs font-bold space-y-1">
-                  <span>🚨 ALLERGY ALERT:</span>
-                  {safetyAnalysis.allergyAlerts.map((a, i) => (
-                    <p key={i}>• {a}</p>
-                  ))}
-                </div>
-              )}
-
-              {/* Drug Interactions */}
-              {safetyAnalysis.drugInteractions.length > 0 && (
-                <div className="space-y-1 text-xs">
-                  <span className="font-bold text-rose-900">Drug-Drug Interactions:</span>
-                  {safetyAnalysis.drugInteractions.map((inter, i) => (
-                    <div key={i} className="p-2.5 rounded-lg bg-rose-100 text-rose-900 font-medium">
-                      <strong className="uppercase">{inter.severity}: </strong> {inter.drugs} — {inter.description}
+              {!isAuditCollapsed && (
+                <>
+                  {/* Allergy Alerts */}
+                  {safetyAnalysis.allergyAlerts.length > 0 && (
+                    <div className="p-3 rounded-xl bg-rose-200/80 text-rose-950 text-xs font-bold space-y-1">
+                      <span>🚨 ALLERGY ALERT:</span>
+                      {safetyAnalysis.allergyAlerts.map((a, i) => (
+                        <p key={i}>• {a}</p>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              )}
+                  )}
 
-              {/* Dosage Guidelines */}
-              {safetyAnalysis.dosageGuidance.length > 0 && (
-                <div className="text-xs text-slate-800 space-y-1">
-                  <span className="font-bold text-slate-900">Dosage & Timing Instructions:</span>
-                  <ul className="list-disc list-inside text-slate-700">
-                    {safetyAnalysis.dosageGuidance.map((g, i) => (
-                      <li key={i}>{g}</li>
-                    ))}
-                  </ul>
-                </div>
+                  {/* Drug Interactions */}
+                  {safetyAnalysis.drugInteractions.length > 0 && (
+                    <div className="space-y-1 text-xs">
+                      <span className="font-bold text-rose-900">Drug-Drug Interactions:</span>
+                      {safetyAnalysis.drugInteractions.map((inter, i) => (
+                        <div key={i} className="p-2.5 rounded-lg bg-rose-100 text-rose-900 font-medium">
+                          <strong className="uppercase">{inter.severity}: </strong> {inter.drugs} — {inter.description}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Dosage Guidelines */}
+                  {safetyAnalysis.dosageGuidance.length > 0 && (
+                    <div className="text-xs text-slate-800 space-y-1">
+                      <span className="font-bold text-slate-900">Dosage & Timing Instructions:</span>
+                      <ul className="list-disc list-inside text-slate-700">
+                        {safetyAnalysis.dosageGuidance.map((g, i) => (
+                          <li key={i}>{g}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

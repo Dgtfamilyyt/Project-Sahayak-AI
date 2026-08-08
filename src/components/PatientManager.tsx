@@ -27,9 +27,17 @@ import {
   ShieldCheck,
   Download,
   Upload,
+  Filter,
+  SlidersHorizontal,
+  XCircle,
+  ArrowUpDown,
+  Stethoscope,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Patient, VisitRecord } from "../types";
 import { generateVisitSummaryPdf, generatePrescriptionPdf, exportElementToPdf } from "../utils/pdfExport";
+import { safePrint } from "../utils/printUtils";
 import { VitalsTrendChart } from "./VitalsTrendChart";
 
 interface PatientManagerProps {
@@ -48,6 +56,13 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
   onSelectPatientForPrescription,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [genderFilter, setGenderFilter] = useState<string>("all");
+  const [villageFilter, setVillageFilter] = useState<string>("all");
+  const [symptomFilter, setSymptomFilter] = useState<string>("all");
+  const [riskFilter, setRiskFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<"recent" | "name" | "id" | "age">("recent");
+  const [showFiltersDrawer, setShowFiltersDrawer] = useState<boolean>(false);
+
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
   const [isNewVisitModalOpen, setIsNewVisitModalOpen] = useState(false);
@@ -58,6 +73,14 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
   const [includeEmergencyContact, setIncludeEmergencyContact] = useState(true);
   const [showPrintConfigModal, setShowPrintConfigModal] = useState(false);
   const [activeExportVisit, setActiveExportVisit] = useState<VisitRecord | undefined>(undefined);
+
+  // Collapsible elements state
+  const [isFlagsCollapsed, setIsFlagsCollapsed] = useState(false);
+  const [collapsedVisits, setCollapsedVisits] = useState<Record<string, boolean>>({});
+
+  const toggleVisitCollapse = (visitId: string) => {
+    setCollapsedVisits(prev => ({ ...prev, [visitId]: !prev[visitId] }));
+  };
 
   // QR Code Scanner / ID States
   const [scanQuery, setScanQuery] = useState("");
@@ -89,14 +112,93 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
   const [temp, setTemp] = useState(98.6);
   const [spO2, setSpO2] = useState(98);
 
-  const filteredPatients = patients.filter(
-    (p) =>
-      p.fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.village.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.knownAllergies.some((a) => a.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      p.chronicDiseases.some((c) => c.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  // Extract unique villages dynamically
+  const uniqueVillages = Array.from(new Set(patients.map((p) => p.village).filter(Boolean)));
+
+  const filteredPatients = patients
+    .filter((p) => {
+      // 1. Text Search across name, ID, village, district, allergies, chronic conditions, and visit complaints/notes
+      const query = searchTerm.trim().toLowerCase();
+      if (query) {
+        const nameMatch = p.fullName.toLowerCase().includes(query);
+        const idMatch = p.id.toLowerCase().includes(query) || (p.qrCodeId && p.qrCodeId.toLowerCase().includes(query));
+        const locationMatch = p.village.toLowerCase().includes(query) || p.district.toLowerCase().includes(query);
+        const allergyMatch = p.knownAllergies.some((a) => a.toLowerCase().includes(query));
+        const chronicMatch = p.chronicDiseases.some((c) => c.toLowerCase().includes(query));
+        const visitSymptomMatch = p.visits.some(
+          (v) =>
+            v.chiefComplaint.toLowerCase().includes(query) ||
+            v.clinicalNotes.toLowerCase().includes(query) ||
+            v.diagnosis.some((d) => d.toLowerCase().includes(query))
+        );
+
+        if (!nameMatch && !idMatch && !locationMatch && !allergyMatch && !chronicMatch && !visitSymptomMatch) {
+          return false;
+        }
+      }
+
+      // 2. Gender Filter
+      if (genderFilter !== "all" && p.gender.toLowerCase() !== genderFilter.toLowerCase()) {
+        return false;
+      }
+
+      // 3. Village Filter
+      if (villageFilter !== "all" && p.village.toLowerCase() !== villageFilter.toLowerCase()) {
+        return false;
+      }
+
+      // 4. Symptom / Complaint Filter
+      if (symptomFilter !== "all") {
+        const sLower = symptomFilter.toLowerCase();
+        const hasSymptom =
+          p.visits.some(
+            (v) =>
+              v.chiefComplaint.toLowerCase().includes(sLower) ||
+              v.clinicalNotes.toLowerCase().includes(sLower) ||
+              v.diagnosis.some((d) => d.toLowerCase().includes(sLower))
+          ) || p.chronicDiseases.some((c) => c.toLowerCase().includes(sLower));
+        if (!hasSymptom) return false;
+      }
+
+      // 5. Risk / Medical Category Filter
+      if (riskFilter === "allergies" && p.knownAllergies.length === 0) return false;
+      if (riskFilter === "chronic" && p.chronicDiseases.length === 0) return false;
+      if (riskFilter === "high_risk" && p.knownAllergies.length === 0 && p.chronicDiseases.length === 0) return false;
+
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === "name") {
+        return a.fullName.localeCompare(b.fullName);
+      }
+      if (sortBy === "id") {
+        return a.id.localeCompare(b.id);
+      }
+      if (sortBy === "age") {
+        return b.age - a.age;
+      }
+      // "recent" default sort
+      const aLatest = a.visits[0]?.date || a.createdAt;
+      const bLatest = b.visits[0]?.date || b.createdAt;
+      return new Date(bLatest).getTime() - new Date(aLatest).getTime();
+    });
+
+  const isFilterActive =
+    searchTerm.trim() !== "" ||
+    genderFilter !== "all" ||
+    villageFilter !== "all" ||
+    symptomFilter !== "all" ||
+    riskFilter !== "all" ||
+    sortBy !== "recent";
+
+  const handleResetFilters = () => {
+    setSearchTerm("");
+    setGenderFilter("all");
+    setVillageFilter("all");
+    setSymptomFilter("all");
+    setRiskFilter("all");
+    setSortBy("recent");
+  };
 
   const getPatientQrPayload = (patient: Patient) => {
     return JSON.stringify({
@@ -309,38 +411,177 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
         </div>
       )}
 
-      {/* Top Banner / Search Row */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-5 rounded-2xl border border-slate-200 shadow-sm no-print">
-        <div className="relative flex-1">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search patient by name, ID (e.g. SHK-1001), village, allergy, or condition..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 bg-white"
-          />
+      {/* Top Banner: Search Bar & Filter Controls */}
+      <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm no-print space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          {/* Main Search Input */}
+          <div className="relative flex-1">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search by patient name, ID (e.g. SHK-1001), village, recent symptoms (e.g. Fever, Cough), or diagnosis..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 bg-white shadow-xs"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-100"
+                title="Clear Search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center space-x-2.5 shrink-0">
+            <button
+              onClick={() => {
+                setQrModalTab("scan");
+                setShowQrModal(true);
+              }}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer border border-slate-200"
+            >
+              <QrCode className="h-4 w-4 text-teal-600" />
+              <span>Rapid QR Scanner</span>
+            </button>
+
+            <button
+              onClick={() => setIsNewPatientModalOpen(true)}
+              className="inline-flex items-center space-x-1.5 px-4 py-2.5 rounded-xl text-xs font-bold bg-teal-600 text-white hover:bg-teal-700 transition-all shadow-md shadow-teal-600/20 cursor-pointer"
+            >
+              <UserPlus className="h-4 w-4" />
+              <span>New Patient Intake</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => {
-              setQrModalTab("scan");
-              setShowQrModal(true);
-            }}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors cursor-pointer border border-slate-200"
-          >
-            <QrCode className="h-4 w-4 text-teal-600" />
-            <span>Rapid QR Scanner</span>
-          </button>
+        {/* Filter & Sort Controls Row */}
+        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center space-x-1 font-bold text-slate-600 mr-1">
+              <Filter className="h-3.5 w-3.5 text-teal-600" />
+              <span>Filters:</span>
+            </div>
 
-          <button
-            onClick={() => setIsNewPatientModalOpen(true)}
-            className="inline-flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs font-bold bg-teal-600 text-white hover:bg-teal-700 transition-all shadow-md shadow-teal-600/20 cursor-pointer"
-          >
-            <UserPlus className="h-4 w-4" />
-            <span>New Patient Intake</span>
-          </button>
+            {/* Gender Filter Dropdown */}
+            <select
+              value={genderFilter}
+              onChange={(e) => setGenderFilter(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="all">Gender: All</option>
+              <option value="female">Female</option>
+              <option value="male">Male</option>
+              <option value="other">Other</option>
+            </select>
+
+            {/* Village Filter Dropdown */}
+            <select
+              value={villageFilter}
+              onChange={(e) => setVillageFilter(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="all">Village: All ({uniqueVillages.length})</option>
+              {uniqueVillages.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+
+            {/* Symptom / Complaint Dropdown */}
+            <select
+              value={symptomFilter}
+              onChange={(e) => setSymptomFilter(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="all">Symptom: All</option>
+              <option value="Fever">Fever / Pyrexia</option>
+              <option value="Cough">Cough / Cold</option>
+              <option value="Hypertension">Hypertension / BP</option>
+              <option value="Headache">Headache / Pain</option>
+              <option value="Chest">Chest Tightness</option>
+              <option value="Abdominal">Abdominal Pain</option>
+              <option value="Diabetes">Diabetes / Sugar</option>
+            </select>
+
+            {/* Medical Category / Risk Filter Dropdown */}
+            <select
+              value={riskFilter}
+              onChange={(e) => setRiskFilter(e.target.value)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="all">Risk: All Records</option>
+              <option value="high_risk">High Risk / Medical Flag</option>
+              <option value="allergies">Has Drug Allergies</option>
+              <option value="chronic">Has Chronic Illness</option>
+            </select>
+
+            {/* Reset Filters Button */}
+            {isFilterActive && (
+              <button
+                onClick={handleResetFilters}
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 font-semibold border border-rose-200 hover:bg-rose-100 transition-colors cursor-pointer"
+              >
+                <XCircle className="h-3.5 w-3.5 text-rose-600" />
+                <span>Reset Filters</span>
+              </button>
+            )}
+          </div>
+
+          {/* Sort By Dropdown */}
+          <div className="flex items-center space-x-1.5 font-medium text-slate-600">
+            <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+            <span>Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as any)}
+              className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-teal-500"
+            >
+              <option value="recent">Most Recent Visit</option>
+              <option value="name">Name (A-Z)</option>
+              <option value="id">Patient ID</option>
+              <option value="age">Age (High to Low)</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Quick Symptom Chips */}
+        <div className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px]">
+          <span className="text-slate-400 font-semibold mr-1">Quick Search:</span>
+          {[
+            { label: "All Patients", filterKey: "all", type: "symptom" },
+            { label: "🌡️ Fever", filterKey: "Fever", type: "symptom" },
+            { label: "🫁 Cough / Cold", filterKey: "Cough", type: "symptom" },
+            { label: "🩺 Hypertension", filterKey: "Hypertension", type: "symptom" },
+            { label: "⚡ Pain", filterKey: "Headache", type: "symptom" },
+            { label: "⚠️ Allergies", filterKey: "allergies", type: "risk" },
+            { label: "🏥 High Risk", filterKey: "high_risk", type: "risk" },
+          ].map((chip, idx) => {
+            const isActive =
+              chip.type === "symptom" ? symptomFilter === chip.filterKey : riskFilter === chip.filterKey;
+            return (
+              <button
+                key={idx}
+                onClick={() => {
+                  if (chip.type === "symptom") {
+                    setSymptomFilter(symptomFilter === chip.filterKey ? "all" : chip.filterKey);
+                  } else {
+                    setRiskFilter(riskFilter === chip.filterKey ? "all" : chip.filterKey);
+                  }
+                }}
+                className={`px-2.5 py-1 rounded-full font-semibold border transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-teal-600 text-white border-teal-600 shadow-xs"
+                    : "bg-slate-100/80 text-slate-600 border-slate-200 hover:bg-slate-200/80"
+                }`}
+              >
+                {chip.label}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -350,17 +591,32 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
         <div className="lg:col-span-4 bg-white rounded-2xl border border-slate-200 p-4 shadow-xs flex flex-col h-[650px] no-print">
           <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Registered Patients ({filteredPatients.length})
+              Matched Patients ({filteredPatients.length} / {patients.length})
             </span>
-            <span className="text-xs text-teal-600 font-bold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">Offline DB</span>
+            <span className="text-xs text-teal-600 font-bold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+              Offline EMR
+            </span>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
             {filteredPatients.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-sm">No matching records found.</div>
+              <div className="text-center py-12 px-4 space-y-3">
+                <AlertCircle className="h-8 w-8 text-slate-300 mx-auto" />
+                <p className="text-slate-500 text-sm font-medium">No patient records match the applied search/filters.</p>
+                {isFilterActive && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="inline-flex items-center space-x-1 px-3 py-1.5 rounded-lg text-xs font-semibold bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition-colors cursor-pointer"
+                  >
+                    <XCircle className="h-3.5 w-3.5 text-teal-600" />
+                    <span>Clear All Search & Filters</span>
+                  </button>
+                )}
+              </div>
             ) : (
               filteredPatients.map((p) => {
                 const isSelected = selectedPatient?.id === p.id;
+                const latestVisit = p.visits[0];
                 return (
                   <div
                     key={p.id}
@@ -387,7 +643,7 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                       </span>
                     </div>
 
-                    <div className="mt-2.5 flex items-center justify-between text-xs text-slate-500">
+                    <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
                       <div className="flex items-center space-x-1">
                         <MapPin className="h-3 w-3 text-slate-400" />
                         <span>{p.village}</span>
@@ -399,16 +655,33 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                       </div>
                     </div>
 
-                    {/* Allergies Badge */}
-                    {p.knownAllergies.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1">
-                        {p.knownAllergies.map((alg, i) => (
-                          <span key={i} className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200/60">
-                            Allergy: {alg}
-                          </span>
-                        ))}
+                    {/* Recent Symptom / Chief Complaint Badge */}
+                    {latestVisit?.chiefComplaint && (
+                      <div className="mt-2 text-[11px] text-teal-900 bg-teal-50 px-2 py-1 rounded-lg border border-teal-200/80 flex items-center space-x-1 font-medium truncate">
+                        <Stethoscope className="h-3 w-3 text-teal-600 shrink-0" />
+                        <span className="truncate">Symptom: {latestVisit.chiefComplaint}</span>
                       </div>
                     )}
+
+                    {/* Allergies & Chronic Badges */}
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {p.knownAllergies.map((alg, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-rose-50 text-rose-700 border border-rose-200/60"
+                        >
+                          Allergy: {alg}
+                        </span>
+                      ))}
+                      {p.chronicDiseases.map((ch, i) => (
+                        <span
+                          key={i}
+                          className="text-[10px] font-medium px-1.5 py-0.2 rounded bg-amber-50 text-amber-800 border border-amber-200/60"
+                        >
+                          {ch}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 );
               })
@@ -417,7 +690,7 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
         </div>
 
         {/* Right Column: Detailed Patient File & Timeline (8 cols) */}
-        <div className="lg:col-span-8 print:col-span-12 print:w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs min-h-[650px] flex flex-col justify-between">
+        <div id="patient-emr-detail-file" className="lg:col-span-8 print:col-span-12 print:w-full bg-white rounded-2xl border border-slate-200 p-6 shadow-xs min-h-[650px] flex flex-col justify-between">
           {selectedPatient ? (
             <div className="space-y-6">
               {/* Profile Header */}
@@ -594,96 +867,112 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {selectedPatient.visits.map((visit, idx) => (
-                      <div key={`${visit.id || "vis"}-${idx}`} className="p-4 rounded-xl bg-slate-50/80 border border-slate-200 space-y-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
-                            <span className="text-xs font-extrabold text-slate-900 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
-                              {visit.date}
-                            </span>
-                            <span className="text-xs text-slate-500 font-medium">by {visit.attendedByWorker}</span>
-                          </div>
+                    {selectedPatient.visits.map((visit, idx) => {
+                      const vId = visit.id || `vis-${idx}`;
+                      const isCollapsed = !!collapsedVisits[vId];
+                      return (
+                        <div key={vId} className="p-4 rounded-xl bg-slate-50/80 border border-slate-200 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-xs font-extrabold text-slate-900 bg-white px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                                {visit.date}
+                              </span>
+                              <span className="text-xs text-slate-500 font-medium">by {visit.attendedByWorker}</span>
+                            </div>
 
-                          <div className="flex items-center space-x-2">
-                            <button
-                              onClick={() => {
-                                setActiveExportVisit(visit);
-                                setShowPrintConfigModal(true);
-                              }}
-                              className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
-                              title="Configure & Download Visit PDF Report"
-                            >
-                              <Download className="h-3.5 w-3.5 text-teal-600" />
-                              <span>Visit PDF</span>
-                            </button>
-
-                            {visit.prescribedMedications && visit.prescribedMedications.length > 0 && (
+                            <div className="flex items-center space-x-2">
                               <button
-                                onClick={() => generatePrescriptionPdf(selectedPatient, visit.prescribedMedications)}
-                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200 transition-colors cursor-pointer"
-                                title="Download Official Prescription Slip PDF"
+                                onClick={() => {
+                                  setActiveExportVisit(visit);
+                                  setShowPrintConfigModal(true);
+                                }}
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 transition-colors cursor-pointer"
+                                title="Configure & Download Visit PDF Report"
                               >
                                 <Download className="h-3.5 w-3.5 text-teal-600" />
-                                <span>Rx Slip PDF</span>
+                                <span>Visit PDF</span>
                               </button>
-                            )}
 
-                            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-200">
-                              {visit.syncedToCloud ? "Synced to Cloud" : "Offline Queued"}
-                            </span>
-                          </div>
-                        </div>
+                              {visit.prescribedMedications && visit.prescribedMedications.length > 0 && (
+                                <button
+                                  onClick={() => generatePrescriptionPdf(selectedPatient, visit.prescribedMedications)}
+                                  className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200 transition-colors cursor-pointer"
+                                  title="Download Official Prescription Slip PDF"
+                                >
+                                  <Download className="h-3.5 w-3.5 text-teal-600" />
+                                  <span>Rx Slip PDF</span>
+                                </button>
+                              )}
 
-                        {/* Complaint & Notes */}
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">Chief Complaint:</p>
-                          <p className="text-xs text-slate-600 font-medium mt-0.5">{visit.chiefComplaint}</p>
-                        </div>
+                              <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-200">
+                                {visit.syncedToCloud ? "Synced to Cloud" : "Offline Queued"}
+                              </span>
 
-                        {visit.clinicalNotes && (
-                          <div className="p-2.5 rounded-lg bg-white border border-slate-100 text-xs text-slate-700 leading-relaxed">
-                            <strong className="text-slate-900">Clinical Notes: </strong>
-                            {visit.clinicalNotes}
-                          </div>
-                        )}
-
-                        {/* Vitals Ribbon */}
-                        <div className="flex flex-wrap items-center gap-3 text-xs bg-white p-2.5 rounded-lg border border-slate-200/80">
-                          <div className="flex items-center space-x-1">
-                            <Activity className="h-3.5 w-3.5 text-rose-500" />
-                            <span className="text-slate-500">BP:</span>
-                            <strong className="text-slate-900">{visit.vitals.bloodPressureSystolic}/{visit.vitals.bloodPressureDiastolic} mmHg</strong>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <Heart className="h-3.5 w-3.5 text-rose-500" />
-                            <span className="text-slate-500">Pulse:</span>
-                            <strong className="text-slate-900">{visit.vitals.heartRate} bpm</strong>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <span className="text-slate-500">Temp:</span>
-                            <strong className="text-slate-900">{visit.vitals.temperature}°F</strong>
-                          </div>
-                          <div className="flex items-center space-x-1">
-                            <span className="text-slate-500">SpO2:</span>
-                            <strong className="text-slate-900">{visit.vitals.spO2}%</strong>
-                          </div>
-                        </div>
-
-                        {/* Prescribed Meds */}
-                        {visit.prescribedMedications.length > 0 && (
-                          <div>
-                            <span className="text-xs font-bold text-slate-700">Prescribed: </span>
-                            <div className="flex flex-wrap gap-1.5 mt-1">
-                              {visit.prescribedMedications.map((m, idx) => (
-                                <span key={idx} className="text-xs font-medium px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
-                                  {m.medicineName} {m.dosage} ({m.frequency})
-                                </span>
-                              ))}
+                              <button
+                                onClick={() => toggleVisitCollapse(vId)}
+                                className="p-1 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-200 transition-colors cursor-pointer"
+                                title={isCollapsed ? "Expand visit details" : "Collapse visit details"}
+                              >
+                                {isCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+                              </button>
                             </div>
                           </div>
-                        )}
-                      </div>
-                    ))}
+
+                          {!isCollapsed && (
+                            <div className="space-y-3 pt-1">
+                              {/* Complaint & Notes */}
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">Chief Complaint:</p>
+                                <p className="text-xs text-slate-600 font-medium mt-0.5">{visit.chiefComplaint}</p>
+                              </div>
+
+                              {visit.clinicalNotes && (
+                                <div className="p-2.5 rounded-lg bg-white border border-slate-100 text-xs text-slate-700 leading-relaxed">
+                                  <strong className="text-slate-900">Clinical Notes: </strong>
+                                  {visit.clinicalNotes}
+                                </div>
+                              )}
+
+                              {/* Vitals Ribbon */}
+                              <div className="flex flex-wrap items-center gap-3 text-xs bg-white p-2.5 rounded-lg border border-slate-200/80">
+                                <div className="flex items-center space-x-1">
+                                  <Activity className="h-3.5 w-3.5 text-rose-500" />
+                                  <span className="text-slate-500">BP:</span>
+                                  <strong className="text-slate-900">{visit.vitals.bloodPressureSystolic}/{visit.vitals.bloodPressureDiastolic} mmHg</strong>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <Heart className="h-3.5 w-3.5 text-rose-500" />
+                                  <span className="text-slate-500">Pulse:</span>
+                                  <strong className="text-slate-900">{visit.vitals.heartRate} bpm</strong>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-slate-500">Temp:</span>
+                                  <strong className="text-slate-900">{visit.vitals.temperature}°F</strong>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <span className="text-slate-500">SpO2:</span>
+                                  <strong className="text-slate-900">{visit.vitals.spO2}%</strong>
+                                </div>
+                              </div>
+
+                              {/* Prescribed Meds */}
+                              {visit.prescribedMedications.length > 0 && (
+                                <div>
+                                  <span className="text-xs font-bold text-slate-700">Prescribed: </span>
+                                  <div className="flex flex-wrap gap-1.5 mt-1">
+                                    {visit.prescribedMedications.map((m, idx) => (
+                                      <span key={idx} className="text-xs font-medium px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">
+                                        {m.medicineName} {m.dosage} ({m.frequency})
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -986,7 +1275,7 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                 </div>
 
                 {selectedPatient ? (
-                  <div className="p-5 rounded-2xl bg-gradient-to-br from-[#1A365D] to-[#0F2342] text-white space-y-4 shadow-lg border border-slate-700 relative overflow-hidden print:p-0">
+                  <div id="patient-qr-health-card" className="p-5 rounded-2xl bg-gradient-to-br from-[#1A365D] to-[#0F2342] text-white space-y-4 shadow-lg border border-slate-700 relative overflow-hidden print:p-0">
                     {/* Background Emblem Watermark */}
                     <div className="absolute -right-8 -bottom-8 opacity-10 pointer-events-none text-white">
                       <ShieldCheck className="h-44 w-44" />
@@ -1056,7 +1345,13 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                     </button>
 
                     <button
-                      onClick={() => window.print()}
+                      onClick={() => {
+                        safePrint({
+                          elementId: "patient-qr-health-card",
+                          documentTitle: `Health_Pass_${selectedPatient.id}`,
+                          fallbackPdf: () => exportElementToPdf("patient-qr-health-card", `Health_Pass_${selectedPatient.id}`),
+                        });
+                      }}
                       className="flex-1 py-2 px-3 rounded-xl bg-[#1A365D] text-white font-bold text-xs flex items-center justify-center space-x-1.5 hover:bg-[#132A4B] transition-colors cursor-pointer shadow-xs"
                     >
                       <Printer className="h-4 w-4 text-teal-300" />
@@ -1293,7 +1588,11 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
               <button
                 onClick={() => {
                   setShowPrintConfigModal(false);
-                  window.print();
+                  safePrint({
+                    elementId: "patient-emr-detail-file",
+                    documentTitle: `EMR_Record_${selectedPatient.fullName}_${selectedPatient.id}`,
+                    fallbackPdf: () => generateVisitSummaryPdf(selectedPatient, activeExportVisit, { includeEmergencyContact }),
+                  });
                 }}
                 className="inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#1A365D] text-white hover:bg-[#132A4B] transition-all cursor-pointer"
               >

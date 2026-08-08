@@ -13,19 +13,22 @@ import {
   WifiOff,
   Filter,
   Printer,
+  Cpu,
 } from "lucide-react";
-import { InventoryItem, NetworkMode } from "../types";
+import { InventoryItem, NetworkMode, OllamaConfig } from "../types";
 
 interface InventoryAssistantProps {
   inventory: InventoryItem[];
   onUpdateInventory: (updated: InventoryItem[]) => void;
   networkMode: NetworkMode;
+  ollamaConfig?: OllamaConfig;
 }
 
 export const InventoryAssistant: React.FC<InventoryAssistantProps> = ({
   inventory,
   onUpdateInventory,
   networkMode,
+  ollamaConfig,
 }) => {
   const [filterCategory, setFilterCategory] = useState("ALL");
   const [isPredicting, setIsPredicting] = useState(false);
@@ -37,6 +40,7 @@ export const InventoryAssistant: React.FC<InventoryAssistantProps> = ({
   const [restockSuccessItem, setRestockSuccessItem] = useState<string | null>(null);
 
   const isOnline = networkMode === "online";
+  const isOllamaActive = ollamaConfig?.provider === "ollama";
 
   const filteredInventory = inventory.filter((item) => {
     if (filterCategory === "ALL") return true;
@@ -52,7 +56,7 @@ export const InventoryAssistant: React.FC<InventoryAssistantProps> = ({
   const handlePredictStockouts = async () => {
     setIsPredicting(true);
 
-    if (!isOnline) {
+    if (!isOnline && !isOllamaActive) {
       setTimeout(() => {
         setPredictionSummary(
           "[Offline Predictive Engine]: Paracetamol and ORS Sachets are experiencing high burn rates. Stockout predicted in 3.4 days. Reorder priority: HIGH."
@@ -74,6 +78,9 @@ export const InventoryAssistant: React.FC<InventoryAssistantProps> = ({
             acc[item.name] = item.dailyBurnRate;
             return acc;
           }, {} as Record<string, number>),
+          provider: ollamaConfig?.provider,
+          ollamaHost: ollamaConfig?.host,
+          ollamaModel: ollamaConfig?.model,
         }),
       });
 

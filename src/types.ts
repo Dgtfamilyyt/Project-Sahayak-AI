@@ -1,3 +1,19 @@
+export type AIProvider = "gemini" | "ollama";
+
+export interface OllamaConfig {
+  provider: AIProvider;
+  host: string;
+  model: string;
+  autoFallback: boolean;
+}
+
+export interface OllamaStatusResponse {
+  connected: boolean;
+  host: string;
+  models: string[];
+  error?: string;
+}
+
 export type NetworkMode = "online" | "offline";
 
 export interface Vitals {

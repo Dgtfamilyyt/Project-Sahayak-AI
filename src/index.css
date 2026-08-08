@@ -1,58 +1,74 @@
 @import "tailwindcss";
 
-@layer utilities {
-  @media print {
-    /* Hide navigation, headers, buttons, form controls, and no-print sections */
-    header,
-    nav,
-    aside,
-    footer,
-    button,
-    input,
-    select,
-    textarea,
-    .no-print,
-    .no-print * {
-      display: none !important;
-    }
+/* Comprehensive Cross-Browser Print Stylesheet */
+@media print {
+  /* Hide non-printable layout elements: navbars, headers, sidebars, buttons, form inputs, modals overlays */
+  header,
+  nav,
+  aside,
+  footer,
+  button,
+  input,
+  select,
+  textarea,
+  .no-print,
+  .no-print * {
+    display: none !important;
+  }
 
-    /* Standardize white page background & exact colors */
-    body {
-      background-color: #ffffff !important;
-      color: #0f172a !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-    }
+  /* Reset body and page styling for clean paper printout */
+  html, body {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 
-    /* Unconstrain grid and scroll heights for clean multi-page or single-page prints */
-    main {
-      padding: 0 !important;
-      max-width: 100% !important;
-      margin: 0 !important;
-      overflow: visible !important;
-    }
+  /* Remove fixed container overlays and backdrop filters during print */
+  .fixed, .absolute {
+    position: static !important;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
 
-    div, section, article {
-      max-height: none !important;
-      overflow: visible !important;
-      box-shadow: none !important;
-    }
+  /* Ensure main content container fills width without truncation */
+  main, #root, .container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: visible !important;
+  }
 
-    .print-only {
-      display: block !important;
-    }
+  /* Unconstrain grid columns and scroll heights */
+  div, section, article {
+    max-height: none !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+  }
 
-    .page-break-before {
-      page-break-before: always;
-    }
+  /* Keep background colors and borders sharp */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    box-shadow: none !important;
+  }
 
-    /* Force background colors and crisp borders in print */
-    * {
-      -webkit-print-color-adjust: exact !important;
-      print-color-adjust: exact !important;
-      box-shadow: none !important;
-    }
+  .print-only {
+    display: block !important;
+  }
+
+  .page-break-before {
+    page-break-before: always !important;
+  }
+
+  .page-break-inside-avoid {
+    page-break-inside: avoid !important;
   }
 }

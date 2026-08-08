@@ -4,7 +4,6 @@ import {
   WifiOff,
   RefreshCw,
   AlertTriangle,
-  Award,
   Users,
   FileText,
   Languages,
@@ -14,8 +13,11 @@ import {
   Database,
   Activity,
   RotateCcw,
+  Cpu,
+  Sparkles,
+  LayoutGrid,
 } from "lucide-react";
-import { NetworkMode } from "../types";
+import { NetworkMode, OllamaConfig } from "../types";
 
 interface NavbarProps {
   networkMode: NetworkMode;
@@ -24,8 +26,9 @@ interface NavbarProps {
   setActiveTab: (tab: string) => void;
   pendingSyncCount: number;
   onOpenEmergency: () => void;
-  onOpenJudgeDeck: () => void;
   onResetData?: () => void;
+  ollamaConfig?: OllamaConfig;
+  onOpenOllamaModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -35,12 +38,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   setActiveTab,
   pendingSyncCount,
   onOpenEmergency,
-  onOpenJudgeDeck,
   onResetData,
+  ollamaConfig,
+  onOpenOllamaModal,
 }) => {
   const isOnline = networkMode === "online";
 
   const navItems = [
+    { id: "landing", label: "Product Landing Page", icon: Sparkles },
+    { id: "wrapper", label: "Hub Overview", icon: LayoutGrid },
     { id: "patients", label: "Patient Records", icon: Users },
     { id: "summarizer", label: "AI Summarizer", icon: FileText },
     { id: "translator", label: "Multilingual Voice", icon: Languages },
@@ -56,7 +62,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           {/* Logo & Brand */}
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab("patients")}>
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => setActiveTab("wrapper")}>
             <div className="h-10 w-10 rounded-xl bg-teal-400 flex items-center justify-center text-[#1A365D] font-bold shadow-md shadow-teal-400/20">
               <Activity className="h-6 w-6 stroke-[2.5]" />
             </div>
@@ -74,31 +80,38 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Controls & Badges */}
-          <div className="flex items-center space-x-3">
-            {/* Hackathon Pitch Deck & Judge Mode Button */}
-            <button
-              onClick={onOpenJudgeDeck}
-              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-amber-400/10 text-amber-300 border border-amber-400/30 hover:bg-amber-400/20 transition-all cursor-pointer shadow-xs"
-              title="View Hackathon Deck & Judge Deliverables 1-16"
-            >
-              <Award className="h-4 w-4 text-amber-400" />
-              <span className="hidden md:inline">Judge Pitch Deck</span>
-              <span className="md:hidden">Deck</span>
-            </button>
-
-            {/* Emergency Mode Button */}
-            <button
-              onClick={onOpenEmergency}
-              className="inline-flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold bg-red-500 text-white hover:bg-red-600 transition-all cursor-pointer shadow-md shadow-red-500/20 animate-pulse"
-            >
-              <AlertTriangle className="h-4 w-4" />
-              <span>EMERGENCY</span>
-            </button>
+          <div className="flex items-center space-x-2.5">
+            {/* AI Provider / Ollama Integration Toggle Pill */}
+            {onOpenOllamaModal && (
+              <button
+                onClick={onOpenOllamaModal}
+                className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-xs ${
+                  ollamaConfig?.provider === "ollama"
+                    ? "bg-teal-500/20 text-teal-200 border-teal-400/50 hover:bg-teal-500/30"
+                    : "bg-slate-800/80 text-slate-200 border-slate-700 hover:bg-slate-700"
+                }`}
+                title="Click to configure Ollama Local LLM / Gemini AI Engine"
+              >
+                {ollamaConfig?.provider === "ollama" ? (
+                  <>
+                    <Cpu className="h-4 w-4 text-teal-300 animate-pulse" />
+                    <span className="hidden lg:inline">Ollama ({ollamaConfig.model})</span>
+                    <span className="lg:hidden">Ollama</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-4 w-4 text-amber-300" />
+                    <span className="hidden lg:inline">Gemini 3.6 API</span>
+                    <span className="lg:hidden font-semibold">Gemini</span>
+                  </>
+                )}
+              </button>
+            )}
 
             {/* Online / Offline Network Toggle */}
             <button
               onClick={onToggleNetworkMode}
-              className={`inline-flex items-center space-x-2 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+              className={`inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
                 isOnline
                   ? "bg-teal-900/60 text-teal-200 border-teal-400/40 hover:bg-teal-900/80"
                   : "bg-amber-900/60 text-amber-200 border-amber-400/50 hover:bg-amber-900/80"
@@ -138,9 +151,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 title="Reset local demo data & restore defaults"
               >
                 <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
-                <span className="hidden lg:inline">Reset</span>
+                <span className="hidden xl:inline">Reset</span>
               </button>
             )}
+
+            {/* Emergency Mode Button - Static and moved to far right */}
+            <button
+              onClick={onOpenEmergency}
+              className="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold bg-red-600 text-white hover:bg-red-700 transition-all cursor-pointer shadow-md shadow-red-600/30 shrink-0"
+              title="Open Emergency Triage Mode"
+            >
+              <AlertTriangle className="h-4 w-4" />
+              <span>EMERGENCY</span>
+            </button>
           </div>
         </div>
 

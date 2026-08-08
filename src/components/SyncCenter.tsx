@@ -11,6 +11,8 @@ import {
   Server,
   Zap,
   RotateCcw,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { SyncQueueItem, NetworkMode } from "../types";
 
@@ -32,6 +34,11 @@ export const SyncCenter: React.FC<SyncCenterProps> = ({
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const [syncLogs, setSyncLogs] = useState<string[]>([]);
+
+  // Collapse states
+  const [isQueueCollapsed, setIsQueueCollapsed] = useState(false);
+  const [isTerminalCollapsed, setIsTerminalCollapsed] = useState(false);
+  const [collapsedItemIds, setCollapsedItemIds] = useState<Record<string, boolean>>({});
 
   const isOnline = networkMode === "online";
   const pendingCount = queue.filter((i) => i.status === "PENDING").length;
@@ -139,74 +146,117 @@ export const SyncCenter: React.FC<SyncCenterProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left Column: Queued Items List (7 cols) */}
         <div className="lg:col-span-7 bg-white rounded-2xl border border-slate-200 p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div
+            onClick={() => setIsQueueCollapsed(!isQueueCollapsed)}
+            className="flex items-center justify-between pb-3 border-b border-slate-100 cursor-pointer select-none"
+          >
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Offline Mutation Queue ({queue.length})
             </span>
 
-            {queue.length > 0 && (
-              <button
-
-                onClick={onClearQueue}
-                className="text-xs font-semibold text-rose-600 hover:underline cursor-pointer"
-              >
-                Clear Queue
+            <div className="flex items-center space-x-2">
+              {queue.length > 0 && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearQueue();
+                  }}
+                  className="text-xs font-semibold text-rose-600 hover:underline cursor-pointer"
+                >
+                  Clear Queue
+                </button>
+              )}
+              <button className="text-slate-500 hover:text-slate-800 cursor-pointer p-0.5">
+                {isQueueCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
               </button>
-            )}
+            </div>
           </div>
 
-          {queue.length === 0 ? (
-            <div className="py-16 text-center space-y-2 text-slate-400 text-xs">
-              <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
-              <p className="font-bold text-slate-700">Sync Queue Clear!</p>
-              <p>All local clinic records are fully synchronized with the cloud.</p>
-            </div>
-          ) : (
-            <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
-              {queue.map((item) => (
-                <div key={item.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="flex items-center space-x-2">
-                      <span className="font-bold text-slate-900 uppercase">{item.entityType}</span>
-                      <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
-                        {item.action}
-                      </span>
-                    </div>
-                    <p className="font-mono text-[10px] text-slate-500">{item.id} • {item.createdAt}</p>
-                  </div>
-
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    item.status === "SYNCED" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                  }`}>
-                    {item.status}
-                  </span>
+          {!isQueueCollapsed && (
+            <>
+              {queue.length === 0 ? (
+                <div className="py-16 text-center space-y-2 text-slate-400 text-xs">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-500 mx-auto" />
+                  <p className="font-bold text-slate-700">Sync Queue Clear!</p>
+                  <p>All local clinic records are fully synchronized with the cloud.</p>
                 </div>
-              ))}
-            </div>
+              ) : (
+                <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                  {queue.map((item) => {
+                    const isItemCollapsed = !!collapsedItemIds[item.id];
+                    return (
+                      <div key={item.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-slate-900 uppercase">{item.entityType}</span>
+                              <span className="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700">
+                                {item.action}
+                              </span>
+                            </div>
+                            <p className="font-mono text-[10px] text-slate-500">{item.id} • {item.createdAt}</p>
+                          </div>
+
+                          <div className="flex items-center space-x-2">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                              item.status === "SYNCED" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                            }`}>
+                              {item.status}
+                            </span>
+                            <button
+                              onClick={() => setCollapsedItemIds(prev => ({ ...prev, [item.id]: !prev[item.id] }))}
+                              className="p-1 rounded text-slate-500 hover:text-slate-800 hover:bg-slate-200 cursor-pointer"
+                            >
+                              {isItemCollapsed ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronUp className="h-3.5 w-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {!isItemCollapsed && item.payload && (
+                          <div className="p-2 rounded-lg bg-slate-100/80 font-mono text-[10px] text-slate-700 overflow-x-auto">
+                            <pre>{JSON.stringify(item.payload, null, 2)}</pre>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </>
           )}
         </div>
 
         {/* Right Column: Live Sync Logs Terminal (5 cols) */}
         <div className="lg:col-span-5 bg-slate-950 text-emerald-400 font-mono p-5 rounded-2xl border border-slate-800 shadow-md space-y-3">
-          <div className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs font-sans">
+          <div
+            onClick={() => setIsTerminalCollapsed(!isTerminalCollapsed)}
+            className="flex items-center justify-between pb-2 border-b border-slate-800 text-xs font-sans cursor-pointer select-none"
+          >
             <span className="font-bold text-slate-300 flex items-center space-x-1.5">
               <Server className="h-4 w-4 text-emerald-400" />
               <span>Cloud Gateway Sync Log</span>
             </span>
-            <span className="text-[10px] text-slate-500">Live Terminal</span>
+            <div className="flex items-center space-x-2">
+              <span className="text-[10px] text-slate-500">Live Terminal</span>
+              <button className="text-slate-400 hover:text-slate-200 cursor-pointer p-0.5">
+                {isTerminalCollapsed ? <ChevronDown className="h-4 w-4" /> : <ChevronUp className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
-          <div className="h-[320px] overflow-y-auto space-y-2 text-[11px] leading-relaxed">
-            {syncLogs.length === 0 ? (
-              <p className="text-slate-600 italic">Ready. Awaiting sync triggers...</p>
-            ) : (
-              syncLogs.map((log, i) => (
-                <p key={i} className={log.includes("ERROR") ? "text-rose-400" : log.includes("SUCCESS") ? "text-emerald-300 font-bold" : "text-slate-300"}>
-                  {log}
-                </p>
-              ))
-            )}
-          </div>
+          {!isTerminalCollapsed && (
+            <div className="h-[320px] overflow-y-auto space-y-2 text-[11px] leading-relaxed">
+              {syncLogs.length === 0 ? (
+                <p className="text-slate-600 italic">Ready. Awaiting sync triggers...</p>
+              ) : (
+                syncLogs.map((log, i) => (
+                  <p key={i} className={log.includes("ERROR") ? "text-rose-400" : log.includes("SUCCESS") ? "text-emerald-300 font-bold" : "text-slate-300"}>
+                    {log}
+                  </p>
+                ))
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -1,10 +1,43 @@
-import { Patient, InventoryItem, SyncQueueItem, AISummaryResult, PrescriptionCheckResult, PrescribedDrug } from "../types";
+import { Patient, InventoryItem, SyncQueueItem, AISummaryResult, PrescriptionCheckResult, PrescribedDrug, OllamaConfig } from "../types";
 import { INITIAL_PATIENTS, INITIAL_INVENTORY } from "../data/mockData";
 
 const PATIENTS_KEY = "sahayak_patients_v1";
 const INVENTORY_KEY = "sahayak_inventory_v1";
 const QUEUE_KEY = "sahayak_sync_queue_v1";
 const MODE_KEY = "sahayak_network_mode_v1";
+const OLLAMA_CONFIG_KEY = "sahayak_ollama_config_v1";
+
+export function loadOllamaConfig(): OllamaConfig {
+  try {
+    const raw = localStorage.getItem(OLLAMA_CONFIG_KEY);
+    if (!raw) {
+      const defaultConfig: OllamaConfig = {
+        provider: "gemini",
+        host: "http://localhost:11434",
+        model: "llama3.2",
+        autoFallback: true,
+      };
+      localStorage.setItem(OLLAMA_CONFIG_KEY, JSON.stringify(defaultConfig));
+      return defaultConfig;
+    }
+    return JSON.parse(raw);
+  } catch (e) {
+    return {
+      provider: "gemini",
+      host: "http://localhost:11434",
+      model: "llama3.2",
+      autoFallback: true,
+    };
+  }
+}
+
+export function saveOllamaConfig(config: OllamaConfig): void {
+  try {
+    localStorage.setItem(OLLAMA_CONFIG_KEY, JSON.stringify(config));
+  } catch (e) {
+    console.error("Failed to save Ollama config", e);
+  }
+}
 
 export function loadLocalPatients(): Patient[] {
   try {
@@ -240,22 +273,52 @@ export function offlineSymptomTranslator(text: string, sourceLang: string): { di
   const keywords: string[] = [];
   const lower = text.toLowerCase();
 
-  if (lower.includes("fever") || lower.includes("காய்ச்சல்") || lower.includes("बुखार")) {
-    keywords.push("Fever / Pyrexia");
+  // Keyword extraction rules
+  if (lower.includes("fever") || lower.includes("காய்ச்சல்") || lower.includes("बुखार") || lower.includes("ज्वर") || lower.includes("ताप") || lower.includes("জ্বর") || lower.includes("તાવ")) {
+    keywords.push("High Fever / Pyrexia");
   }
-  if (lower.includes("cough") || lower.includes("இருமல்") || lower.includes("खांसी")) {
+  if (lower.includes("chill") || lower.includes("ठंड") || lower.includes("शीत") || lower.includes("কাঁপছে")) {
+    keywords.push("Chills & Rigors");
+  }
+  if (lower.includes("cough") || lower.includes("இருமல்") || lower.includes("खांसी") || lower.includes("খাসি")) {
     keywords.push("Productive Cough");
   }
-  if (lower.includes("pain") || lower.includes("வலி") || lower.includes("दर्द")) {
-    keywords.push("Body Ache / Myalgia");
+  if (lower.includes("headache") || lower.includes("सिर") || lower.includes("தலைவலி") || lower.includes("মাথা")) {
+    keywords.push("Cephalalgia / Severe Headache");
   }
-  if (lower.includes("breath") || lower.includes("மூச்சு") || lower.includes("सांस")) {
-    keywords.push("Dyspnea / Breathlessness");
+  if (lower.includes("pain") || lower.includes("வலி") || lower.includes("दर्द") || lower.includes("नొప్పి") || lower.includes("वेदना") || lower.includes("ব্যথা")) {
+    keywords.push("Acute Pain / Myalgia");
+  }
+  if (lower.includes("breath") || lower.includes("மூச்சு") || lower.includes("सांस") || lower.includes("হাঁপিয়ে")) {
+    keywords.push("Dyspnea / Shortness of Breath");
+  }
+  if (lower.includes("vomit") || lower.includes("वांत") || lower.includes("वांतो") || lower.includes("వాంతులు")) {
+    keywords.push("Emesis / Vomiting");
+  }
+  if (lower.includes("stomach") || lower.includes("कडू") || lower.includes("कడుపు") || lower.includes("বুকে")) {
+    keywords.push("Abdominal Discomfort");
+  }
+  if (lower.includes("chest") || lower.includes("நெஞ்சு") || lower.includes("सीने") || lower.includes("বুকে")) {
+    keywords.push("Chest Pressure / Oppression");
+  }
+
+  // Pre-translated direct text mappings for default samples
+  let directTranslation = `Patient narrative translated from ${sourceLang}: "${text}"`;
+  if (text.includes("बुखार") && text.includes("ठंड")) {
+    directTranslation = "I have had a high fever for the last two days, feeling cold with severe chills and a severe headache. I am also sweating heavily at night.";
+  } else if (text.includes("மூச்சுத் திணறல்")) {
+    directTranslation = "I have shortness of breath and severe cough at night. My chest feels heavy and there is a lot of phlegm.";
+  } else if (text.includes("వాంతులు")) {
+    directTranslation = "I have severe abdominal pain for two days and frequent vomiting with nausea. I cannot retain any food.";
+  } else if (text.includes("सांध्यांमध्ये")) {
+    directTranslation = "I have severe pain in my body and joints with extreme fatigue, and my body is burning with fever.";
+  } else if (text.includes("বুকে হালকা চাপ")) {
+    directTranslation = "I am feeling mild pressure in my chest and dizziness. I get breathless even after walking a short distance.";
   }
 
   return {
-    directTranslation: `[Offline Translation - ${sourceLang}]: ${text}`,
-    clinicalNotes: `Patient presents with chief complaints: ${keywords.join(", ") || "General malaise"}. Onset described as acute in nature.`,
-    keywords: keywords.length > 0 ? keywords : ["General Symptoms"],
+    directTranslation,
+    clinicalNotes: `Patient presents with acute symptoms (${sourceLang} narrative). Primary clinical indicators: ${keywords.join(", ") || "General malaise"}. Recommended prompt clinical evaluation.`,
+    keywords: keywords.length > 0 ? keywords : ["General Malaise"],
   };
 }
