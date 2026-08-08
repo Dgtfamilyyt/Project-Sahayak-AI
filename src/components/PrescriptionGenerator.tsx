@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Patient, InventoryItem, PrescribedDrug, NetworkMode, PrescriptionCheckResult } from "../types";
 import { offlineDrugInteractionChecker } from "../utils/offlineStorage";
-import { exportElementToPdf } from "../utils/pdfExport";
+import { generatePrescriptionPdf, exportElementToPdf } from "../utils/pdfExport";
 
 interface PrescriptionGeneratorProps {
   patients: Patient[];
@@ -433,7 +433,7 @@ export const PrescriptionGenerator: React.FC<PrescriptionGeneratorProps> = ({
 
                 <div className="flex items-center space-x-2">
                   <button
-                    onClick={() => exportElementToPdf("prescription-slip-card", `Prescription_${selectedPatient.fullName}_${selectedPatient.id}`)}
+                    onClick={() => generatePrescriptionPdf(selectedPatient, prescribedList)}
                     className="inline-flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-800 hover:bg-slate-200 transition-colors border border-slate-200 cursor-pointer"
                   >
                     <Download className="h-4 w-4 text-slate-600" />

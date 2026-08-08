@@ -1,6 +1,6 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { Patient, VisitRecord, AISummaryResult } from "../types";
+import { Patient, VisitRecord, AISummaryResult, PrescribedDrug } from "../types";
 
 /**
  * Capture an HTML DOM element and save it as a high-quality PDF using html2canvas + jsPDF.
@@ -310,4 +310,165 @@ export function generateMedicalSummaryPdf(patient: Patient, summary: AISummaryRe
 
   // Save
   doc.save(`AI_Medical_Summary_${patient.fullName.replace(/\s+/g, "_")}.pdf`);
+}
+
+/**
+ * Programmatic PDF Generator for Official Prescription Slips
+ * Works 100% offline without DOM capture issues.
+ */
+export function generatePrescriptionPdf(
+  patient: Patient,
+  medications: PrescribedDrug[],
+  rxNumber?: string
+): void {
+  const doc = new jsPDF({
+    orientation: "portrait",
+    unit: "mm",
+    format: "a4",
+  });
+
+  const serialNo = rxNumber || `Rx-SAHAYAK-${Date.now().toString().slice(-6)}`;
+  const dateStr = new Date().toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+
+  // Top Header Banner
+  doc.setFillColor(26, 54, 93); // #1A365D
+  doc.rect(0, 0, 210, 36, "F");
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("PRIMARY HEALTHCARE CENTRE (PHC RAMPUR)", 14, 14);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text("Department of Health & Family Welfare | Govt. of Haryana", 14, 22);
+  doc.text("Medical Officer: Dr. A. K. Singh (M.B.B.S, M.D)", 14, 28);
+
+  doc.setFont("helvetica", "bold");
+  doc.text(serialNo, 145, 16);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Date: ${dateStr}`, 145, 22);
+
+  // Patient Info Box
+  let y = 44;
+  doc.setFillColor(248, 250, 252); // slate-50
+  doc.rect(14, y, 182, 32, "F");
+  doc.setDrawColor(226, 232, 240);
+  doc.rect(14, y, 182, 32, "S");
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11);
+  doc.text(`Patient: ${patient.fullName}`, 18, y + 8);
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "normal");
+  doc.text(`Patient ID: ${patient.id}`, 18, y + 16);
+  doc.text(`Age / Gender: ${patient.age} yrs / ${patient.gender}`, 18, y + 22);
+  doc.text(`Location: ${patient.village}, ${patient.district}`, 18, y + 28);
+
+  doc.text(`Blood Group: ${patient.bloodGroup}`, 110, y + 16);
+  const allergiesStr = patient.knownAllergies.join(", ") || "None Reported";
+  doc.setTextColor(185, 28, 28);
+  doc.text(`Known Allergies: ${allergiesStr}`, 110, y + 22);
+  doc.setTextColor(15, 23, 42);
+  doc.text(`Emergency: ${patient.emergencyContactName} (${patient.emergencyContactPhone})`, 110, y + 28);
+
+  // Rx Heading
+  y += 40;
+  doc.setTextColor(26, 54, 93);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("Rx", 14, y);
+
+  doc.setFontSize(11);
+  doc.text("Prescribed Medications", 26, y);
+
+  // Medications Table Header
+  y += 6;
+  doc.setFillColor(241, 245, 249);
+  doc.rect(14, y, 182, 8, "F");
+  doc.setDrawColor(203, 213, 225);
+  doc.rect(14, y, 182, 8, "S");
+
+  doc.setFontSize(9);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(51, 65, 85);
+  doc.text("#", 18, y + 5.5);
+  doc.text("Medicine Name", 28, y + 5.5);
+  doc.text("Dosage", 95, y + 5.5);
+  doc.text("Frequency / Dosage Timing", 130, y + 5.5);
+  doc.text("Duration", 175, y + 5.5);
+
+  // Table Rows
+  y += 8;
+  if (medications.length === 0) {
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(100, 116, 139);
+    doc.text("No medications listed on prescription.", 18, y + 8);
+    y += 12;
+  } else {
+    medications.forEach((med, idx) => {
+      const rowY = y + idx * 10;
+      doc.setFillColor(idx % 2 === 0 ? 255 : 248, idx % 2 === 0 ? 255 : 250, idx % 2 === 0 ? 255 : 252);
+      doc.rect(14, rowY, 182, 10, "F");
+      doc.setDrawColor(241, 245, 249);
+      doc.rect(14, rowY, 182, 10, "S");
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`${idx + 1}`, 18, rowY + 6.5);
+      doc.text(med.medicineName, 28, rowY + 6.5);
+
+      doc.setFont("helvetica", "normal");
+      doc.text(med.dosage, 95, rowY + 6.5);
+      doc.text(med.frequency, 130, rowY + 6.5);
+      doc.setFont("helvetica", "bold");
+      doc.text(`${med.durationDays} Days`, 175, rowY + 6.5);
+    });
+
+    y += medications.length * 10 + 6;
+  }
+
+  // Instructions & Follow-up
+  y += 10;
+  doc.setFillColor(240, 253, 250); // teal-50
+  doc.rect(14, y, 182, 20, "F");
+  doc.setDrawColor(153, 246, 228);
+  doc.rect(14, y, 182, 20, "S");
+
+  doc.setTextColor(17, 94, 89);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9.5);
+  doc.text("INSTRUCTIONS & FOLLOW-UP:", 18, y + 6);
+
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(8.5);
+  doc.text("1. Take medications regularly after meals as indicated above.", 18, y + 11);
+  doc.text("2. Follow up at PHC Rampur in 14 days or earlier if symptoms escalate.", 18, y + 16);
+
+  // Footer Signature & QR
+  const pageHeight = 297;
+  doc.setDrawColor(203, 213, 225);
+  doc.line(14, pageHeight - 35, 196, pageHeight - 35);
+
+  doc.setFontSize(8);
+  doc.setTextColor(100, 116, 139);
+  doc.text("Sahayak AI Digital Prescription. Authorized for rural healthcare delivery.", 14, pageHeight - 26);
+  doc.text(`Digital Verification Hash: ${patient.qrCodeId || patient.id}`, 14, pageHeight - 21);
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont("helvetica", "bold");
+  doc.text("Authorized Medical Officer Signature:", 120, pageHeight - 26);
+  doc.setFont("helvetica", "normal");
+  doc.text("__________________________________", 120, pageHeight - 20);
+
+  // Save PDF
+  doc.save(`Prescription_${patient.fullName.replace(/\s+/g, "_")}_${patient.id}.pdf`);
 }

@@ -10,6 +10,7 @@ import {
   ShieldCheck,
   Server,
   Zap,
+  RotateCcw,
 } from "lucide-react";
 import { SyncQueueItem, NetworkMode } from "../types";
 
@@ -18,6 +19,7 @@ interface SyncCenterProps {
   networkMode: NetworkMode;
   onSyncNow: () => Promise<void>;
   onClearQueue: () => void;
+  onResetAllData?: () => void;
 }
 
 export const SyncCenter: React.FC<SyncCenterProps> = ({
@@ -25,6 +27,7 @@ export const SyncCenter: React.FC<SyncCenterProps> = ({
   networkMode,
   onSyncNow,
   onClearQueue,
+  onResetAllData,
 }) => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
@@ -69,6 +72,17 @@ export const SyncCenter: React.FC<SyncCenterProps> = ({
         </div>
 
         <div className="flex items-center space-x-3">
+          {onResetAllData && (
+            <button
+              onClick={onResetAllData}
+              className="inline-flex items-center space-x-1.5 px-3.5 py-2.5 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition-all cursor-pointer"
+              title="Reset all application data and restore defaults"
+            >
+              <RotateCcw className="h-4 w-4 text-slate-500" />
+              <span>Reset Application State</span>
+            </button>
+          )}
+
           <button
             onClick={handleTriggerSync}
             disabled={isSyncing || !isOnline || pendingCount === 0}

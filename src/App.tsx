@@ -30,6 +30,7 @@ import {
   enqueueMutation,
   getNetworkMode,
   setNetworkMode as persistNetworkMode,
+  resetAllLocalData,
 } from "./utils/offlineStorage";
 
 export default function App() {
@@ -157,6 +158,20 @@ export default function App() {
     setSyncQueue([]);
   };
 
+  const handleResetEverything = () => {
+    resetAllLocalData();
+    const freshPatients = loadLocalPatients();
+    const freshInventory = loadLocalInventory();
+    setPatients(freshPatients);
+    setInventory(freshInventory);
+    setSyncQueue([]);
+    setSelectedPatient(freshPatients[0] || null);
+    setNetworkModeState("online");
+    setIsEmergencyOpen(false);
+    setIsJudgeDeckOpen(false);
+    setActiveTab("patients");
+  };
+
   const pendingSyncCount = syncQueue.filter((i) => i.status === "PENDING").length;
 
   return (
@@ -170,6 +185,7 @@ export default function App() {
         pendingSyncCount={pendingSyncCount}
         onOpenEmergency={() => setIsEmergencyOpen(true)}
         onOpenJudgeDeck={() => setIsJudgeDeckOpen(true)}
+        onResetData={handleResetEverything}
       />
 
       {/* Main Body Content Area */}
@@ -236,6 +252,7 @@ export default function App() {
             networkMode={networkMode}
             onSyncNow={handleSyncNow}
             onClearQueue={handleClearQueue}
+            onResetAllData={handleResetEverything}
           />
         )}
       </main>

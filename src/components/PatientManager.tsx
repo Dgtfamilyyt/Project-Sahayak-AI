@@ -29,7 +29,8 @@ import {
   Upload,
 } from "lucide-react";
 import { Patient, VisitRecord } from "../types";
-import { generateVisitSummaryPdf, exportElementToPdf } from "../utils/pdfExport";
+import { generateVisitSummaryPdf, generatePrescriptionPdf, exportElementToPdf } from "../utils/pdfExport";
+import { VitalsTrendChart } from "./VitalsTrendChart";
 
 interface PatientManagerProps {
   patients: Patient[];
@@ -567,6 +568,9 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                 </div>
               </div>
 
+              {/* Vitals Trend Graph Analytics (Recharts Line Chart) */}
+              <VitalsTrendChart patient={selectedPatient} />
+
               {/* Visit History Timeline */}
               <div>
                 <div className="flex items-center justify-between mb-4">
@@ -612,6 +616,17 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                               <Download className="h-3.5 w-3.5 text-teal-600" />
                               <span>Visit PDF</span>
                             </button>
+
+                            {visit.prescribedMedications && visit.prescribedMedications.length > 0 && (
+                              <button
+                                onClick={() => generatePrescriptionPdf(selectedPatient, visit.prescribedMedications)}
+                                className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200 transition-colors cursor-pointer"
+                                title="Download Official Prescription Slip PDF"
+                              >
+                                <Download className="h-3.5 w-3.5 text-teal-600" />
+                                <span>Rx Slip PDF</span>
+                              </button>
+                            )}
 
                             <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-200">
                               {visit.syncedToCloud ? "Synced to Cloud" : "Offline Queued"}

@@ -94,6 +94,18 @@ export function setNetworkMode(mode: "online" | "offline"): void {
   localStorage.setItem(MODE_KEY, mode);
 }
 
+export function resetAllLocalData(): void {
+  try {
+    localStorage.clear();
+    localStorage.setItem(PATIENTS_KEY, JSON.stringify(INITIAL_PATIENTS));
+    localStorage.setItem(INVENTORY_KEY, JSON.stringify(INITIAL_INVENTORY));
+    localStorage.setItem(QUEUE_KEY, JSON.stringify([]));
+    localStorage.setItem(MODE_KEY, "online");
+  } catch (e) {
+    console.error("Failed to reset local data", e);
+  }
+}
+
 // ==========================================
 // LOCAL OFFLINE HEURISTIC RULE-BASED ENGINES
 // ==========================================

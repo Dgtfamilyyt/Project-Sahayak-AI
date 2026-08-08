@@ -13,6 +13,7 @@ import {
   BarChart2,
   Database,
   Activity,
+  RotateCcw,
 } from "lucide-react";
 import { NetworkMode } from "../types";
 
@@ -24,6 +25,7 @@ interface NavbarProps {
   pendingSyncCount: number;
   onOpenEmergency: () => void;
   onOpenJudgeDeck: () => void;
+  onResetData?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -34,6 +36,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   pendingSyncCount,
   onOpenEmergency,
   onOpenJudgeDeck,
+  onResetData,
 }) => {
   const isOnline = networkMode === "online";
 
@@ -126,6 +129,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               <RefreshCw className={`h-3.5 w-3.5 ${pendingSyncCount > 0 ? "text-amber-400 animate-spin" : "text-teal-300"}`} />
               <span className="font-bold">{pendingSyncCount}</span>
             </div>
+
+            {/* Reset Data Button */}
+            {onResetData && (
+              <button
+                onClick={onResetData}
+                className="inline-flex items-center space-x-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-slate-800/80 text-slate-300 border border-slate-700 hover:bg-slate-700 transition-all cursor-pointer"
+                title="Reset local demo data & restore defaults"
+              >
+                <RotateCcw className="h-3.5 w-3.5 text-slate-400" />
+                <span className="hidden lg:inline">Reset</span>
+              </button>
+            )}
           </div>
         </div>
 

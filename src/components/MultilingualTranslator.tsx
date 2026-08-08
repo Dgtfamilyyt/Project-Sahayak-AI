@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   Languages,
   Mic,
@@ -14,6 +14,7 @@ import {
   Printer,
   Copy,
   Check,
+  AlertCircle,
 } from "lucide-react";
 import { NetworkMode, TranslationResult } from "../types";
 import { offlineSymptomTranslator } from "../utils/offlineStorage";
@@ -30,6 +31,8 @@ export const MultilingualTranslator: React.FC<MultilingualTranslatorProps> = ({ 
     "मुझे पिछले दो दिनों से तेज बुखार है, ठंड लग रही है और सिर में बहुत तेज दर्द हो रहा है।"
   );
   const [isRecording, setIsRecording] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+  const recognitionRef = useRef<any>(null);
   const [isTranslating, setIsTranslating] = useState(false);
   const [copiedNotes, setCopiedNotes] = useState(false);
   const [translationResult, setTranslationResult] = useState<TranslationResult | null>({
@@ -137,12 +140,39 @@ ${translationResult.suggestedDoctorQuestions.map((q) => `- ${q}`).join("\n")}`;
     }
   };
 
+  // Cleanup speech recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // ignore
+        }
+      }
+    };
+  }, []);
+
   const handleMicToggle = () => {
+    setMicError(null);
     if (isRecording) {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          console.error(e);
+        }
+      }
       setIsRecording(false);
-    } else {
+      return;
+    }
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      setMicError("Live Speech Recognition API is not supported in this browser. Running fallback audio recording...");
       setIsRecording(true);
-      // Simulated voice recognition snippet fill
       setTimeout(() => {
         if (sourceLanguage === "Tamil") {
           setPatientInput("மூச்சுத் திணறல் மற்றும் இரவில் கடுமையான இருமல் உள்ளது.");
@@ -153,6 +183,60 @@ ${translationResult.suggestedDoctorQuestions.map((q) => `- ${q}`).join("\n")}`;
         }
         setIsRecording(false);
       }, 2500);
+      return;
+    }
+
+    try {
+      const selectedLangObj = languagesList.find((l) => l.name === sourceLanguage);
+      const recognition = new SpeechRecognition();
+      recognition.lang = selectedLangObj?.code || "hi-IN";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      let finalTranscript = "";
+
+      recognition.onstart = () => {
+        setIsRecording(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interimTranscript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + " ";
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+        const currentSpeech = (finalTranscript + interimTranscript).trim();
+        if (currentSpeech) {
+          setPatientInput(currentSpeech);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn("Speech recognition error:", event.error);
+        if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+          setMicError("Microphone permission was denied. Please allow microphone access in your browser.");
+        } else if (event.error === "no-speech") {
+          setMicError("No speech was detected. Please speak clearly into your microphone.");
+        } else {
+          setMicError(`Voice recognition notice: ${event.error}`);
+        }
+        setIsRecording(false);
+      };
+
+      recognition.onend = () => {
+        setIsRecording(false);
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err: any) {
+      console.error("Failed to start speech recognition:", err);
+      setMicError("Unable to activate microphone. Please check browser permissions.");
+      setIsRecording(false);
     }
   };
 
@@ -211,10 +295,15 @@ ${translationResult.suggestedDoctorQuestions.map((q) => `- ${q}`).join("\n")}`;
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Patient Audio / Regional Text ({sourceLanguage})
             </span>
-            {isRecording && (
+            {isRecording ? (
               <span className="text-xs font-bold text-rose-600 animate-pulse flex items-center space-x-1">
                 <span className="h-2 w-2 rounded-full bg-rose-600"></span>
-                <span>Listening...</span>
+                <span>Listening ({sourceLanguage})...</span>
+              </span>
+            ) : (
+              <span className="text-[11px] font-bold text-teal-700 flex items-center space-x-1">
+                <Mic className="h-3 w-3 text-teal-600" />
+                <span>Microphone Active</span>
               </span>
             )}
           </div>
@@ -227,6 +316,7 @@ ${translationResult.suggestedDoctorQuestions.map((q) => `- ${q}`).join("\n")}`;
                 onClick={() => {
                   setSourceLanguage(lang.name);
                   setPatientInput(lang.sample);
+                  setMicError(null);
                 }}
                 className={`text-[11px] px-2.5 py-1 rounded-xl border transition-all cursor-pointer ${
                   sourceLanguage === lang.name
@@ -239,13 +329,21 @@ ${translationResult.suggestedDoctorQuestions.map((q) => `- ${q}`).join("\n")}`;
             ))}
           </div>
 
+          {/* Mic Alert / Status Notification */}
+          {micError && (
+            <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-xs flex items-start space-x-2">
+              <AlertCircle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>{micError}</span>
+            </div>
+          )}
+
           {/* Input Textarea */}
           <div className="relative">
             <textarea
               rows={6}
               value={patientInput}
               onChange={(e) => setPatientInput(e.target.value)}
-              placeholder="Type patient's description or click the microphone to speak..."
+              placeholder={`Speak in ${sourceLanguage} by clicking the microphone button or type symptoms here...`}
               className="w-full p-3.5 rounded-xl border border-slate-200 text-xs text-slate-900 leading-relaxed focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 focus:outline-none bg-white"
             />
 
@@ -254,12 +352,12 @@ ${translationResult.suggestedDoctorQuestions.map((q) => `- ${q}`).join("\n")}`;
               onClick={handleMicToggle}
               className={`absolute right-3 bottom-3 p-3 rounded-full shadow-md transition-all cursor-pointer ${
                 isRecording
-                  ? "bg-rose-600 text-white animate-bounce"
-                  : "bg-teal-50 text-teal-800 hover:bg-teal-100 border border-teal-200"
+                  ? "bg-rose-600 text-white animate-bounce ring-4 ring-rose-200"
+                  : "bg-teal-600 text-white hover:bg-teal-700 shadow-teal-600/30"
               }`}
-              title="Click to toggle mic recording simulation"
+              title={isRecording ? "Stop speech recording" : `Click to speak live in ${sourceLanguage}`}
             >
-              {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5 text-teal-600" />}
+              {isRecording ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </button>
           </div>
 
