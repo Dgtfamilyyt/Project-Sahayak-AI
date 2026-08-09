@@ -34,6 +34,8 @@ import {
   Stethoscope,
   ChevronDown,
   ChevronUp,
+  List,
+  LayoutList,
 } from "lucide-react";
 import { Patient, VisitRecord } from "../types";
 import { generateVisitSummaryPdf, generatePrescriptionPdf, exportElementToPdf } from "../utils/pdfExport";
@@ -42,6 +44,8 @@ import { VitalsTrendChart } from "./VitalsTrendChart";
 
 interface PatientManagerProps {
   patients: Patient[];
+  selectedPatient?: Patient | null;
+  onSelectPatient?: (patient: Patient | null) => void;
   onAddPatient: (patient: Patient) => void;
   onAddVisit: (patientId: string, visit: VisitRecord) => void;
   onSelectPatientForSummary: (patient: Patient) => void;
@@ -50,12 +54,16 @@ interface PatientManagerProps {
 
 export const PatientManager: React.FC<PatientManagerProps> = ({
   patients,
+  selectedPatient: propSelectedPatient,
+  onSelectPatient: propOnSelectPatient,
   onAddPatient,
   onAddVisit,
   onSelectPatientForSummary,
   onSelectPatientForPrescription,
 }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [searchScope, setSearchScope] = useState<"all" | "name" | "id" | "village" | "symptoms">("all");
+  const [patientListViewMode, setPatientListViewMode] = useState<"compact" | "detailed">("detailed");
   const [genderFilter, setGenderFilter] = useState<string>("all");
   const [villageFilter, setVillageFilter] = useState<string>("all");
   const [symptomFilter, setSymptomFilter] = useState<string>("all");
@@ -63,7 +71,33 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
   const [sortBy, setSortBy] = useState<"recent" | "name" | "id" | "age">("recent");
   const [showFiltersDrawer, setShowFiltersDrawer] = useState<boolean>(false);
 
-  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(patients[0] || null);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(
+    propSelectedPatient || patients[0] || null
+  );
+
+  useEffect(() => {
+    if (propSelectedPatient) {
+      setSelectedPatient(propSelectedPatient);
+    } else if (selectedPatient) {
+      const updated = patients.find((p) => p.id === selectedPatient.id);
+      if (updated) {
+        setSelectedPatient(updated);
+      } else if (patients.length > 0) {
+        setSelectedPatient(patients[0]);
+      } else {
+        setSelectedPatient(null);
+      }
+    } else if (patients.length > 0) {
+      setSelectedPatient(patients[0]);
+    }
+  }, [patients, propSelectedPatient]);
+
+  const handleSelectPatient = (patient: Patient) => {
+    setSelectedPatient(patient);
+    if (propOnSelectPatient) {
+      propOnSelectPatient(patient);
+    }
+  };
   const [isNewPatientModalOpen, setIsNewPatientModalOpen] = useState(false);
   const [isNewVisitModalOpen, setIsNewVisitModalOpen] = useState(false);
   const [showQrModal, setShowQrModal] = useState(false);
@@ -117,23 +151,43 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
 
   const filteredPatients = patients
     .filter((p) => {
-      // 1. Text Search across name, ID, village, district, allergies, chronic conditions, and visit complaints/notes
+      // 1. Text Search across selected scope (or all fields)
       const query = searchTerm.trim().toLowerCase();
       if (query) {
-        const nameMatch = p.fullName.toLowerCase().includes(query);
-        const idMatch = p.id.toLowerCase().includes(query) || (p.qrCodeId && p.qrCodeId.toLowerCase().includes(query));
-        const locationMatch = p.village.toLowerCase().includes(query) || p.district.toLowerCase().includes(query);
-        const allergyMatch = p.knownAllergies.some((a) => a.toLowerCase().includes(query));
-        const chronicMatch = p.chronicDiseases.some((c) => c.toLowerCase().includes(query));
-        const visitSymptomMatch = p.visits.some(
-          (v) =>
-            v.chiefComplaint.toLowerCase().includes(query) ||
-            v.clinicalNotes.toLowerCase().includes(query) ||
-            v.diagnosis.some((d) => d.toLowerCase().includes(query))
-        );
+        if (searchScope === "name") {
+          if (!p.fullName.toLowerCase().includes(query)) return false;
+        } else if (searchScope === "id") {
+          const idMatch = p.id.toLowerCase().includes(query) || (p.qrCodeId && p.qrCodeId.toLowerCase().includes(query));
+          if (!idMatch) return false;
+        } else if (searchScope === "village") {
+          const locationMatch = p.village.toLowerCase().includes(query) || p.district.toLowerCase().includes(query);
+          if (!locationMatch) return false;
+        } else if (searchScope === "symptoms") {
+          const symptomMatch =
+            p.visits.some(
+              (v) =>
+                v.chiefComplaint.toLowerCase().includes(query) ||
+                v.clinicalNotes.toLowerCase().includes(query) ||
+                v.diagnosis.some((d) => d.toLowerCase().includes(query))
+            ) || p.chronicDiseases.some((c) => c.toLowerCase().includes(query));
+          if (!symptomMatch) return false;
+        } else {
+          // "all" scope
+          const nameMatch = p.fullName.toLowerCase().includes(query);
+          const idMatch = p.id.toLowerCase().includes(query) || (p.qrCodeId && p.qrCodeId.toLowerCase().includes(query));
+          const locationMatch = p.village.toLowerCase().includes(query) || p.district.toLowerCase().includes(query);
+          const allergyMatch = p.knownAllergies.some((a) => a.toLowerCase().includes(query));
+          const chronicMatch = p.chronicDiseases.some((c) => c.toLowerCase().includes(query));
+          const visitSymptomMatch = p.visits.some(
+            (v) =>
+              v.chiefComplaint.toLowerCase().includes(query) ||
+              v.clinicalNotes.toLowerCase().includes(query) ||
+              v.diagnosis.some((d) => d.toLowerCase().includes(query))
+          );
 
-        if (!nameMatch && !idMatch && !locationMatch && !allergyMatch && !chronicMatch && !visitSymptomMatch) {
-          return false;
+          if (!nameMatch && !idMatch && !locationMatch && !allergyMatch && !chronicMatch && !visitSymptomMatch) {
+            return false;
+          }
         }
       }
 
@@ -224,7 +278,7 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
     );
 
     if (match) {
-      setSelectedPatient(match);
+      handleSelectPatient(match);
       setShowQrModal(false);
       setIsLiveCameraActive(false);
       setScanQuery("");
@@ -357,7 +411,7 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
     };
 
     onAddPatient(newPatient);
-    setSelectedPatient(newPatient);
+    handleSelectPatient(newPatient);
     setIsNewPatientModalOpen(false);
     setFullName("");
   };
@@ -414,25 +468,85 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
       {/* Top Banner: Search Bar & Filter Controls */}
       <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm no-print space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-          {/* Main Search Input */}
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search by patient name, ID (e.g. SHK-1001), village, recent symptoms (e.g. Fever, Cough), or diagnosis..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500/30 focus:border-teal-500 bg-white shadow-xs"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-100"
-                title="Clear Search"
+          {/* Single Visually Unified Search Bar Component (Shared border, no gaps between segments) */}
+          <div className="flex-1 flex flex-col sm:flex-row items-stretch border border-slate-300 rounded-xl bg-white shadow-xs divide-y sm:divide-y-0 sm:divide-x divide-slate-200 overflow-hidden">
+            {/* Segment 1: Search Scope Selector ("All Fields", Name, ID, Village, Symptoms) */}
+            <div className="bg-slate-50/90 px-3 py-2 flex items-center shrink-0">
+              <select
+                value={searchScope}
+                onChange={(e) => setSearchScope(e.target.value as any)}
+                className="bg-transparent text-xs font-bold text-slate-700 focus:outline-none cursor-pointer pr-1"
+                aria-label="Search Scope"
               >
-                <X className="h-4 w-4" />
+                <option value="all">All Fields</option>
+                <option value="name">Name Only</option>
+                <option value="id">Patient ID</option>
+                <option value="village">Village / District</option>
+                <option value="symptoms">Symptoms / Diagnosis</option>
+              </select>
+            </div>
+
+            {/* Segment 2: Search Input Box */}
+            <div className="relative flex-1 flex items-center px-3 py-1.5 min-w-0">
+              <Search className="h-4 w-4 text-slate-400 shrink-0 mr-2" />
+              <input
+                type="text"
+                placeholder={
+                  searchScope === "name"
+                    ? "Search by patient name..."
+                    : searchScope === "id"
+                    ? "Search by patient ID (e.g. SHK-1001)..."
+                    : searchScope === "village"
+                    ? "Search by village or district..."
+                    : searchScope === "symptoms"
+                    ? "Search by symptoms or complaints..."
+                    : "Search by patient name, ID (e.g. SHK-1001), village, symptoms..."
+                }
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-transparent text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none py-1"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm("")}
+                  className="text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded-full hover:bg-slate-100 shrink-0 ml-1"
+                  title="Clear Search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            {/* Segment 3: List View Toggle */}
+            <div className="bg-slate-50/90 px-2 py-1.5 flex items-center space-x-1 shrink-0 justify-center">
+              <button
+                type="button"
+                onClick={() => setPatientListViewMode("detailed")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                  patientListViewMode === "detailed"
+                    ? "bg-[#1A365D] text-white shadow-xs font-extrabold"
+                    : "text-slate-600 hover:text-slate-900 font-semibold"
+                }`}
+                title="Detailed List View"
+              >
+                <LayoutList className="h-3.5 w-3.5" />
+                <span>Detailed</span>
               </button>
-            )}
+              <button
+                type="button"
+                onClick={() => setPatientListViewMode("compact")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center space-x-1 ${
+                  patientListViewMode === "compact"
+                    ? "bg-[#1A365D] text-white shadow-xs font-extrabold"
+                    : "text-slate-600 hover:text-slate-900 font-semibold"
+                }`}
+                title="Compact List View"
+              >
+                <List className="h-3.5 w-3.5" />
+                <span>Compact</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center space-x-2.5 shrink-0">
@@ -593,9 +707,34 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
             <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
               Matched Patients ({filteredPatients.length} / {patients.length})
             </span>
-            <span className="text-xs text-teal-600 font-bold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
-              Offline EMR
-            </span>
+
+            {/* Compact / Detailed Toggle with Clear Active State Style */}
+            <div className="flex items-center bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setPatientListViewMode("compact")}
+                className={`px-2.5 py-1 rounded-md text-[11px] transition-all cursor-pointer flex items-center space-x-1 ${
+                  patientListViewMode === "compact"
+                    ? "bg-[#1A365D] text-white font-extrabold shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 font-semibold"
+                }`}
+              >
+                <List className="h-3 w-3" />
+                <span>Compact</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPatientListViewMode("detailed")}
+                className={`px-2.5 py-1 rounded-md text-[11px] transition-all cursor-pointer flex items-center space-x-1 ${
+                  patientListViewMode === "detailed"
+                    ? "bg-[#1A365D] text-white font-extrabold shadow-xs"
+                    : "text-slate-600 hover:text-slate-900 font-semibold"
+                }`}
+              >
+                <LayoutList className="h-3 w-3" />
+                <span>Detailed</span>
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -617,10 +756,44 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
               filteredPatients.map((p) => {
                 const isSelected = selectedPatient?.id === p.id;
                 const latestVisit = p.visits[0];
+
+                if (patientListViewMode === "compact") {
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => handleSelectPatient(p)}
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                        isSelected
+                          ? "bg-teal-50/80 border-teal-500/60 shadow-xs"
+                          : "bg-slate-50/60 border-slate-200/80 hover:bg-slate-100/80"
+                      }`}
+                    >
+                      <div className="min-w-0 pr-2">
+                        <div className="flex items-center space-x-2">
+                          <h4 className="font-bold text-slate-900 text-xs truncate">{p.fullName}</h4>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 shrink-0">
+                            {p.gender.charAt(0)}, {p.age}y
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-mono flex items-center space-x-1.5 mt-0.5 truncate">
+                          <span>{p.id}</span>
+                          <span>•</span>
+                          <span className="truncate">{p.village}</span>
+                        </p>
+                      </div>
+
+                      {/* Neutral Blood Group Badge */}
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 shrink-0">
+                        {p.bloodGroup}
+                      </span>
+                    </div>
+                  );
+                }
+
                 return (
                   <div
                     key={p.id}
-                    onClick={() => setSelectedPatient(p)}
+                    onClick={() => handleSelectPatient(p)}
                     className={`p-3.5 rounded-xl border transition-all cursor-pointer ${
                       isSelected
                         ? "bg-teal-50/80 border-teal-500/60 shadow-xs"
@@ -638,7 +811,8 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                         <p className="text-xs text-slate-500 mt-0.5 font-mono">{p.id}</p>
                       </div>
 
-                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-rose-100 text-rose-800">
+                      {/* Neutral Blood Group Badge (Slate instead of Red) */}
+                      <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300">
                         {p.bloodGroup}
                       </span>
                     </div>
@@ -709,7 +883,7 @@ export const PatientManager: React.FC<PatientManagerProps> = ({
                     <div className="flex items-center space-x-3 text-xs text-slate-500 mt-1">
                       <span>{selectedPatient.gender}, {selectedPatient.age} Years</span>
                       <span>•</span>
-                      <span>Blood: <strong className="text-rose-600">{selectedPatient.bloodGroup}</strong></span>
+                      <span>Blood: <strong className="text-slate-800 font-mono">{selectedPatient.bloodGroup}</strong></span>
                       <span>•</span>
                       <span>Lang: {selectedPatient.primaryLanguage}</span>
                     </div>

@@ -351,6 +351,8 @@ export default function App() {
           {activeTab === "patients" && (
             <PatientManager
               patients={patients}
+              selectedPatient={selectedPatient}
+              onSelectPatient={(p) => setSelectedPatient(p)}
               onAddPatient={handleAddPatient}
               onAddVisit={handleAddVisit}
               onSelectPatientForSummary={(p) => {

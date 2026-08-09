@@ -97,19 +97,26 @@ export const VitalsTrendChart: React.FC<VitalsTrendChartProps> = ({ patient }) =
 
   // Helper function to render delta status
   const renderDelta = (current: number, previous: number | null, unit: string, isLowerBetter = false) => {
-    if (previous === null || previous === undefined) {
+    if (previous === null || previous === undefined || current === undefined || current === null) {
       return <span className="text-[10px] text-slate-400 flex items-center font-normal"><Minus className="h-3 w-3 mr-0.5" /> First Record</span>;
     }
     const diff = current - previous;
-    if (diff === 0) {
+    const rounded = Math.round(diff * 10) / 10;
+    if (Math.abs(rounded) < 0.05) {
       return <span className="text-[10px] text-slate-500 font-bold flex items-center"><Minus className="h-3 w-3 mr-0.5" /> Stable</span>;
     }
-    const isPositiveOutcome = isLowerBetter ? diff < 0 : diff > 0;
-    const Icon = diff > 0 ? TrendingUp : TrendingDown;
+    const isPositiveOutcome = isLowerBetter ? rounded < 0 : rounded > 0;
+    const Icon = rounded > 0 ? TrendingUp : TrendingDown;
+    
+    // Ensure max 1 decimal place without precision glitches
+    const absValStr = Math.abs(rounded) % 1 === 0 ? Math.abs(rounded).toFixed(0) : Math.abs(rounded).toFixed(1);
+    const sign = rounded > 0 ? "+" : "-";
+    const formattedDiff = `${sign}${absValStr}`;
+
     return (
       <span className={`text-[10px] font-bold flex items-center ${isPositiveOutcome ? "text-emerald-600" : "text-rose-600"}`}>
         <Icon className="h-3 w-3 mr-0.5" />
-        {diff > 0 ? `+${diff}` : diff} {unit}
+        {formattedDiff} {unit}
       </span>
     );
   };
